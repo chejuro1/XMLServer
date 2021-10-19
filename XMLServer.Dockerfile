@@ -26,10 +26,10 @@ ARG ANT_VERSION
 #COPY content/release-stage/CuramSDEJ/xmlserver /opt/ibm/Curam/xmlserver
 COPY content/start-xmlserver.sh /opt/ibm/Curam/xmlserver/start-xmlserver.sh
 COPY content/stop-xmlserver.sh /opt/ibm/Curam/xmlserver/stop-xmlserver.sh
-RUN unzip -qo /tmp/apache-ant.zip -d /opt/ \
-    && chgrp -Rc 0 /opt/ibm/Curam \
-    && chmod -Rc g=u /opt/ibm/Curam \
-    && chmod -c +x /opt/ibm/Curam/xmlserver/*.sh
+# RUN unzip -qo /tmp/apache-ant.zip -d /opt/ \
+#     && chgrp -Rc 0 /opt/ibm/Curam \
+#     && chmod -Rc g=u /opt/ibm/Curam \
+#     && chmod -c +x /opt/ibm/Curam/xmlserver/*.sh
 
 # Final image
 FROM ${BASE_REGISTRY}ibm/ibmjava8-sdk-ubi8-minimal:latest
