@@ -1,0 +1,283 @@
+---
+title: CodeReady Containers
+description: CodeReady Containers
+tabs: ['OpenShift Overview','CodeReady Containers']
+---
+
+## What is CRC?
+
+CodeReady Containers (CRC) is a minimal, preconfigured OpenShift cluster that is designed to run on your local workstation as a development environment for OpenShift.
+For more information, see [CodeReady Containers](https://github.com/code-ready/crc).
+
+Similar to Minikube in concept, CRC provides a cloud like environment locally to create and deploy an OpenShift cluster for development and testing purposes.
+
+This page covers some common CRC operations, including deploying IBM® Cúram Social Program Management (SPM) to the CRC environment. You will use the helm charts produced in [Preparing Helm charts](/deployment/hc_deployment).
+
+For a full getting started guide for CRC, see [Getting Started Guide CodeReady Containers](https://access.redhat.com/documentation/en-us/red_hat_codeready_containers/1.23/html/getting_started_guide/index)
+
+### Minimum System requirements
+
+CodeReady Containers system requirements can be found here: [CRC Minimum system requirements](https://code-ready.github.io/crc/#minimum-system-requirements_gsg).
+
+<InlineNotification>
+
+There is a known CRC [issue](https://github.com/code-ready/crc/issues/557) with respect to resource usage. When deploying SPM on CRC our experience has shown that a minimum of 16GB will improve performance, however 32GB is optimal.
+
+</InlineNotification>
+
+<InlineNotification kind="warning">
+
+Red Hat CodeReady Containers only supports platform-native virtualization technologies:
+
+* Hyper-V on Windows
+* HyperKit on macOS
+* libvirt on Linux
+
+Running CRC using nested virtualization is discouraged and not supported.
+
+</InlineNotification>
+
+## Installing CRC
+
+* Create an account at [RedHat Cloud](https://www.redhat.com/).
+* Create a `$CRC_HOME` folder (e.g. `~/crc_home`) to use for the purposes of the installation.
+* Download the installation archive from [latest release](https://cloud.redhat.com/openshift/install/crc/installer-provisioned) to `$CRC_HOME` and extract the archive:
+
+    ```shell
+    tar -xvf crc-*-amd64.tar.xz
+    ```
+
+* On the same page, download your pull secret to `$CRC_HOME`.
+* Copy the `crc` binary to `/usr/local/bin/`
+
+    ```shell
+    sudo cp $CRC_HOME/crc-*-amd64/crc /usr/local/bin/
+    ```
+
+<InlineNotification>
+
+Alternatively, you may add the extracted directory to the `$PATH` variable instead of moving the binary.
+
+</InlineNotification>
+
+Whichever option you choose, you should now have `crc` in your executable path. Verify by running the following command:
+
+```shell
+crc version
+```
+
+The output should be similar to the following:
+
+```shell
+CodeReady Containers version: 1.23.1+be17b141
+OpenShift version: 4.7.0 (embedded in executable)
+```
+
+## Setting up CRC
+
+The first step is to configure the prerequisites for the OpenShift cluster, including taking control of your hosts and resolver files to provide access to the CRC cluster.
+To do this run the following command, providing the workstation administrator password as required.
+This procedure also creates the `~/.crc` directory if it does not already exist.
+
+```shell
+crc setup
+```
+
+Now that the basic configuration is complete, you need to edit the configuration to change the memory limit and add the path to the pull secret file downloaded previously.
+
+<InlineNotification kind="warning">
+
+**Note:** VPN clients can conflict with the network configuration for CodeReady Containers.
+If you use a VPN client on the same environment as CRC, see the [VPN support](https://github.com/code-ready/crc/wiki/VPN-support--with-an--userland-network-stack) document in the CRC GitHub wiki.
+
+</InlineNotification>
+
+To change the memory limit, set the CPUs, and add the path to the pull secret file downloaded previously. Run the following commands:
+
+```shell
+crc config set memory <number-in-MiB>
+crc config set cpus <whole-number>
+crc config set pull-secret-file $CRC_HOME/pull-secret.txt
+```
+
+<InlineNotification>
+
+CRC's minimum memory allocation requirement is 8GB, only a single replica SPM deployment can be achieved using this.
+
+You should allocate as many resources as are available.
+
+**Note:** Values for available memory are set in mebibytes (MiB). Below are some sample values.
+
+Example memory values:
+
+* 32768 (MiB) is equilivant to 34.4GB
+* 20480 (MiB) is equilivant to 21.5GB
+* 15120 (MiB) is equilivant to 15.9GB
+
+**Note:** The greater the workload the greater the memory and processor requirements. Any changes to the CRC config require you to delete the cluster and start a new one.
+
+**Note:** CPU limits must not exceed the physical resources.
+
+</InlineNotification>
+
+You can always check the configured options of `crc`, run the following command:
+
+```shell
+crc config view
+```
+
+After setup is complete, start the cluster, run the following command:
+
+```shell
+crc start
+```
+
+This outputs something similar to the following:
+
+```log
+INFO Checking if running as non-root
+INFO Checking minimum RAM requirements
+INFO Checking if Virtualization is enabled
+...
+...
+Started the OpenShift cluster.
+
+The server is accessible via web console at:
+  https://console-openshift-console.apps-crc.testing
+
+Log in as administrator:
+  Username: kubeadmin
+  Password: kubeadmin-password
+
+Log in as user:
+  Username: developer
+  Password: developer
+
+Use the 'oc' command line interface:
+  $ eval $(crc oc-env)
+  $ oc login -u developer https://api.crc.testing:6443
+```
+
+Note the `kubeadmin` and `developer` credentials for later use.
+
+<InlineNotification>
+
+For convenience, you may set the `kubeadmin` user's password as an environment variable:
+
+```shell
+export KUBEADMN_PSW=kubeadmin-password
+```
+
+In case you need to retrieve the password later, you can run `crc console --credentials`.
+
+</InlineNotification>
+
+Next, set up the OpenShift Client `oc`, which is used to administer the CRC cluster:
+
+```shell
+eval $(crc oc-env)
+```
+
+If required, you can stop the cluster:
+
+```shell
+crc stop
+```
+
+Or delete the cluster:
+
+```shell
+crc delete
+```
+
+## Creating a CRC project
+
+Create a project for the SPM deployment, again use an environment variable for your convenience when following the guide.
+
+Create the environment variable, you can set to value to anything you like, but it should consist of lower case alphanumeric characters or `-`, and must start and end with an alphanumeric character (e.g. `my-name`,  or `123-abc`):
+
+```shell
+export PROJECT="ocp"
+```
+
+Log in as kubeadmin:
+
+```shell
+oc login -u kubeadmin -p $KUBEADMN_PSW https://api.crc.testing:6443
+```
+
+Create the project:
+
+```shell
+oc new-project $PROJECT
+```
+
+## Configuring the Image Registry
+
+CodeReady Containers comes with an internal image registry where you can store the application's Docker images.
+
+The registry is accessed using different URLs, depending on the use - pods use an internal registry service name, and a developer would use the public route to publish the images.
+
+The registry URLs can be retrieved using the `oc registry info` command, with either a `--public` or `--internal` flag.
+
+* Public URL: `default-route-openshift-image-registry.apps-crc.testing`
+  * Use this when tagging and publishing images.
+* Internal URL: `image-registry.openshift-image-registry.svc:5000`
+  * Use this when deploying using Helm.
+
+The public URL uses a certificate signed by the OpenShift internal CA, which Docker does not trust by default.
+
+Docker loads all `*.crt` files under `/etc/docker/certs.d/<registryHost[:port]>` directories and uses them for verifying any self-signed certificates.
+
+More information can be found in the Docker Documentation [Use self-signed certificates](https://docs.docker.com/registry/insecure/#use-self-signed-certificates).
+
+Enable Docker trust certificate:
+
+```shell
+CERT_PATH="/etc/docker/certs.d/$(oc registry info --public)"
+sudo mkdir -p $CERT_PATH
+oc extract secret/router-ca -n openshift-ingress-operator --keys=tls.crt --confirm
+sudo cp tls.crt $CERT_PATH
+```
+
+Log in to the OpenShift registry:
+
+```shell
+docker login -u kubeadmin -p $(oc whoami -t) $(oc registry info --public)
+```
+
+## Hostname configuration for CRC
+
+This runbook uses a generic hostname of `spm-ocp.apps-crc.testing` as an example in commands and the configuration files.
+
+You should add the CRC IP address to the `hosts` file by using the generic hostname, or else modify the usage of `spm-ocp.apps-crc.testing` in this runbook to reflect your local hostname.
+
+<Tabs>
+
+<Tab label="Mac/Linux">
+<Row>
+<Column>
+
+```shell
+echo -e "$(crc ip)\tspm-ocp.apps-crc.testing" | sudo tee -a /etc/hosts
+```
+
+</Column>
+</Row>
+</Tab>
+
+<Tab label="Windows">
+<Row>
+<Column>
+
+```powershell
+Add-Content -Path C:\Windows\System32\drivers\etc\hosts -Value "$(crc ip)`tspm-ocp.apps-crc.testing" -Force
+```
+
+</Column>
+</Row>
+</Tab>
+
+</Tabs>
+
+Where `crc ip` is the command that returns the CRC VM's IP address that is accessible from your workstation.

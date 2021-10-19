@@ -1,0 +1,78 @@
+###############################################################################
+# Copyright 2019,2021 IBM Corporation
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+###############################################################################
+
+global:
+  images:
+    repository: replace
+    imageLibrary: ''
+    imagePrefix: ''
+    imageTag: replace
+    pullPolicy: Always
+  imagePullSecret:
+    secretName: ''
+    username: ''
+  timezone: 'UTC'
+  sch:
+    enabled: true
+  apps:
+    common:
+      persistence:
+        ## Persistence volume to store data (such as non-log files)
+        enabled: false
+        ## If enabled, creates a PVC to connect to IBM Cloud Object Storage
+        ## Properties storageClassName, secretKey, accessKey, instanceId, and bucketName are required
+        ## Values available in the WebUI where the bucket was pre-created
+        # storageClassName: ""
+        # secretKey: ""
+        # accessKey: ""
+        # instanceId: ""
+        # bucketName: ""
+        mountPoint: ''
+
+# XML server port number
+serverPort: 1800
+
+# Number of XML servers replicas to run
+replicaCount: 1
+
+# Resource limits for XML server
+resources:
+  limits:
+    cpu: "0.5"
+    memory: "1Gi"
+  requests:
+    cpu: "0.25"
+    memory: "0.5Gi"
+
+# Name of an existing ServiceAccount for running the XML server
+serviceAccountName: ""
+
+# Settings for node affinty, will give an affinity preference of
+# weight 100 for nodes labelled as worker-type:application
+affinityKey: worker-type
+affinityValue: application
+
+# XML server JVM configuration settings
+jvm:
+  maxMemory: '768m'
+  threadStackSize: '-Xss4m'
+  jvmOptions:
+
+# XML server configuration settings
+config:
+  threadPoolSize: 5
+  threadPoolQueueSize: 200
+  socketTimeout: 60000

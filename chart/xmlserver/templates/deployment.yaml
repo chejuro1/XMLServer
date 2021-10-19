@@ -1,0 +1,152 @@
+{{- include "sch.config.init" (list . "xmlserver.sch.chart.config.values") -}}
+---
+###############################################################################
+# Copyright 2019,2021 IBM Corporation
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+###############################################################################
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "sch.names.fullName" (list .) }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+{{ include "sch.metadata.labels.standard" (list . "") | indent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount | default 1 }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "sch.names.appName" (list .) | quote }}
+      app.kubernetes.io/instance: {{ .Release.Name | quote }}
+  template:
+    metadata:
+      labels:
+        {{ include "sch.metadata.labels.standard" (list . "") | nindent 8 }}
+        app: {{ include "sch.names.appName" (list .) }}
+        version: v{{ .Release.Revision }}
+      annotations:
+        {{- include "sch.metadata.annotations.metering" (list . .sch.chart.metering) | nindent 8 }}
+    spec:
+      {{- include "sch.security.securityContext" (list . .sch.chart.podSecurityContext) | nindent 6 }}
+      affinity:
+        {{- include "sch.affinity.nodeAffinity" (list . .sch.chart.nodeAffinity) | nindent 8 }}
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app.kubernetes.io/component
+                  operator: In
+                  values:
+                  - xmlserver
+              topologyKey: topology.kubernetes.io/zone
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app.kubernetes.io/component
+                  operator: In
+                  values:
+                  - xmlserver
+              topologyKey: kubernetes.io/hostname
+      restartPolicy: {{ .restartPolicy | default "Always" }}
+      {{- if or .Values.global.imagePullSecret.secretName .Values.global.imagePullSecret.username }}
+      imagePullSecrets:
+        - name: {{ default (printf "%s-pull-secret" .Release.Name) .Values.global.imagePullSecret.secretName }}
+      {{- end }}
+      serviceAccountName: {{ default (include "sch.names.fullName" (list .)) .Values.serviceAccountName }}
+      volumes:
+        - name: xmlserverconfig-template-file
+          configMap:
+            name: {{ .Release.Name }}-xmlserverconfig-template-cm
+        - name: keystore-props
+          configMap:
+            name: {{ .Release.Name }}-tlskeystoreprops-cm
+        - name: tls-certs
+          secret:
+            secretName: {{ include "sch.names.fullName" (list .) }}
+        - name: keystore-volume
+          emptyDir: {}
+        {{- if .Values.global.apps.common.persistence.enabled }}
+        - name: {{ .Release.Name }}-persistence-volume
+          persistentVolumeClaim:
+            claimName: {{ .Release.Name }}-persistence-pvc
+        {{- end }}
+      initContainers:
+        - name: import-certs-for-xmlserver
+          {{- include "xmlserver.utilities.definition" . | nindent 10 }}
+          env:
+            - name: svcKeyFile
+              value: /mnt/svcCertificates/tls.key
+            - name: svcCrtFile
+              value: /mnt/svcCertificates/tls.crt
+            - name: keystore
+              value: /mnt/keystores/keystore.p12
+          command:
+            - /bin/sh
+            - -c
+            - >
+              openssl pkcs12 -export -inkey $svcKeyFile -in $svcCrtFile -out $keystore -password pass:password -name xmlserverks;
+              keytool -list -v -keystore $keystore -storepass password -storetype pkcs12;
+          volumeMounts:
+            - name: keystore-volume
+              mountPath: /mnt/keystores
+            - name: tls-certs
+              mountPath: /mnt/svcCertificates
+      containers:
+        - name: {{ .Chart.Name }}
+          image: {{ include "xmlserver.imageFullName" (dict "ImageConfig" .Values.global.images "ImageName" "xmlserver") }}
+          imagePullPolicy: {{ .Values.global.images.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.serverPort | default 1800 }}
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- include "sch.security.securityContext" (list . .sch.chart.containerSecurityContext) | nindent 10 }}
+          env:
+            - name: TZ
+              value: {{ .Values.global.timezone }}
+            - name: JVM_MAX_MEM
+              value: {{ .Values.jvm.maxMemory | quote }}
+            - name: JAVA_THREAD_STACK_SIZE
+              value: {{ .Values.jvm.threadStackSize | quote }}
+            - name: JVM_OPTIONS
+              value: {{ .Values.jvm.jvmOptions | quote }}
+            {{- if .Values.global.apps.common.persistence.enabled }}
+            - name: MOUNT_POINT
+              value: {{ include "persistence.mountPoint" $ }}
+            {{- end }}
+          volumeMounts:
+            - name: xmlserverconfig-template-file
+              mountPath: /opt/ibm/Curam/xmlserver/xmlserverconfig.xml.template
+              subPath: xmlserverconfig.xml.template
+            - name: keystore-props
+              mountPath: /opt/ibm/Curam/xmlserver/TLSKeystore.properties
+              subPath: TLSKeystore.properties
+            - name: keystore-volume
+              mountPath: /opt/ibm/Curam/xmlserver/keystore.p12
+              subPath: keystore.p12
+            {{- if .Values.global.apps.common.persistence.enabled }}
+            - name: {{ .Release.Name }}-persistence-volume
+              mountPath: {{ include "persistence.mountPoint" $ }}
+            {{- end }}
+          lifecycle:
+            preStop:
+              exec:
+                command:
+                - /bin/bash
+                - -c
+                - /opt/ibm/Curam/xmlserver/stop-xmlserver.sh

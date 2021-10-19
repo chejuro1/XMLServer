@@ -1,0 +1,274 @@
+---
+title: Minikube
+description: Minikube
+tabs: ['Kubernetes Overview','Minikube','IBM Cloud Kubernetes Service']
+---
+
+Minikube runs a single-node Kubernetes cluster inside a virtual machine (VM) on your laptop, for users who want to try out Kubernetes or develop with it.
+Minikube documentation is available at [Installing Kubernetes with Minikube](https://minikube.sigs.k8s.io/docs/start/).
+The following sections are not a substitute for the official documentation but they get you started in a classic configuration.
+
+The following installation steps are described:
+
+* Installing Minikube
+* Setting up the Docker® registry
+* Configuring the hosts file for Minikube
+* Starting Minikube
+* Enabling Helm for Minikube
+* A summary of some useful Minikube commands
+
+## Minikube installation
+
+Minikube installation steps are described in the official documentation for your preferred Operating System: [Install Minikube](https://minikube.sigs.k8s.io/docs/start/).
+
+## Starting Minikube
+
+<InlineNotification kind="info">
+
+**Note:** In the following example we set the `--insecure-registry` option passing in a subnet of `192.168.0.0/16`.
+The IP address on your machine _may_ not be on the appropriate network for this subnet to work.
+Therefore, start a Minikube instance to verify the IP address begins with 192.168.0.X. You need only do this once.
+See the note in [Specifying the insecure registry](#specifying-the-insecure-registry).
+
+</InlineNotification>
+
+Minikube can be started with a command as simple as `minikube start` without any additional parameters. However, the resulting VM will be too small to deploy an instance of IBM® Cúram Social Program Management (SPM),
+so several other parameters are required:
+
+```shell
+minikube start --driver=virtualbox --cpus 4 --memory 8G \
+               --insecure-registry "192.168.0.0/16" \
+               --disk-size='30G' \
+               --kubernetes-version v1.19.12
+```
+
+### Specifying the resource allocation
+
+You can add properties to specify the resource allocation. For example:
+
+* `--cpus 4` to use 4 CPUs
+* `--memory 8G` to use 8 GB of RAM
+* `--disk-size=30G` to use 30 GB of disk space
+
+### Specifying the VM driver
+
+Add the `--driver=` option to the `minikube start` command to specify the underlying virtual machine driver. The following drivers were tested:
+
+* [VirtualBox](https://minikube.sigs.k8s.io/docs/drivers/virtualbox/) (`virtualbox`) on OSX, Linux, and Windows
+* [VMware Fusion](https://minikube.sigs.k8s.io/docs/drivers/vmware/) (`vmware`) on OSX
+  * **Note**: There is an [issue](https://github.com/kubernetes/minikube/issues/9720) running Minikube on macOS Big Sur with VMware Fusion 12. If you are using Big Sur, use an alternative driver.
+* [Docker](https://minikube.sigs.k8s.io/docs/drivers/kvm2/) (`docker`) on Linux
+* [KVM](https://minikube.sigs.k8s.io/docs/drivers/kvm2/) (`kvm2`) on Linux
+
+The [Install Minikube](https://minikube.sigs.k8s.io/docs/start/) page gives you more information on available VM driver options.
+
+### Specifying the insecure registry
+
+You must specify the `--insecure-registry` option to reference the Docker registry that is created. The `--insecure-registry` value is the same as specified in the  `daemon.json` file.
+
+<InlineNotification>
+
+**Note:** Because of a limitation in the current version of Minikube, adding the `--insecure-registry` option works on a new Minikube instance only.
+If you start Minikube, be sure to run `minikube stop` and `minikube delete` before you start it again with the `--insecure-registry` option.
+
+</InlineNotification>
+
+### Specifying the Kubernetes version
+
+You can override the version of Kubernetes that gets installed inside the Minikube VM by using the `--kubernetes-version` flag. This flag controls the compatibility between the client tools and the Kubernetes specification.
+
+If you override the Kubernetes version, ensure that you download and install the corresponding version of `kubectl` - this version must be the same version as the Kubernetes cluster.
+
+<InlineNotification>
+
+**Note:** The `kubectl` version running locally and on Minikube should be compatible, so it's possible to use the `--kubernetes-version` flag to keep them consistent.
+
+</InlineNotification>
+
+## Docker Hub download rate limit and Minikube
+
+In November 2020, Docker introduced [download rate limits](https://docs.docker.com/docker-hub/download-rate-limit/) on Docker Hub.
+Normally, this can be mitigated by providing an Image Pull Secret to the deployment.
+
+For Minikube addons these pull secrets are not exposed, so the solution involves providing a `config.json` file containing the credentials to the Kubelet process running inside the Minikube environment.
+
+1. Authenticate your local Docker client with Docker Hub: `docker login`
+    * You can register for a free account on the [Docker Hub website](https://hub.docker.com/signup)
+2. Copy the contents of your local Docker secrets:
+
+    ```shell
+    cat ~/.docker/config.json && echo
+    ```
+
+    * The output should look something like below:
+
+    ```json
+    {
+      "auths": {
+        "https://index.docker.io/v1/": {
+          "auth": "<base64 of username:password>"
+        }
+      }
+    }
+    ```
+
+3. Open a terminal in your Minikube VM:
+
+    ```shell
+    minikube ssh
+    ```
+
+4. Paste the contents of the file from step 2 into `/var/lib/kubelet/config.json`:
+
+    * Edit the command to include the contents of your `config.json` file first
+
+    ```shell
+    cat << EOS | sudo tee /var/lib/kubelet/config.json
+    {
+      "auths": {
+        "https://index.docker.io/v1/": {
+          "auth": "<base64 of username:password>"
+        }
+      }
+    }
+    EOS
+    ```
+
+5. Restart the `kubelet` process in the Minikube VM:
+
+    ```shell
+    sudo systemctl restart kubelet
+    ```
+
+6. Exit the Minikube terminal.
+
+## Docker registry
+
+You need a registry to use docker images with Helm in Minikube.
+There are different types of registries that can be used. However, this page describes a simple registry option that doesn't require extra components.
+
+Minikube provides an add-on to run a registry in a container. For more information, see [How to access the Docker registry within minikube](https://minikube.sigs.k8s.io/docs/tasks/docker_registry/).
+
+You can use the following command to enable the add-on:
+
+```shell
+minikube addons enable registry
+```
+
+When enabled, starting Minikube starts two pods on the `kube-system` namespace, named `registry` and `registry-proxy`. Now the registry is active and can be used. The registry points to the Minikube IP address on port 5000.
+
+The containers don't mount any volumes, so stopping Minikube deletes the registry content.
+
+## Hostname configuration for Minikube
+
+This runbook uses a generic hostname of `minikube.local` as an example in commands and the configuration files.
+You should add the Minikube IP address to the `hosts` file by using the generic hostname, or else modify the usage of `minikube.local` in this runbook to reflect your local hostname.
+
+Specifying `minikube ip` in the following command returns the Minikube VM's IP address that is accessible from your workstation:
+
+<Tabs>
+
+<Tab label="Mac/Linux">
+<Row>
+<Column>
+
+```shell
+echo -e "$(minikube ip)\tminikube.local" | sudo tee -a /etc/hosts
+```
+
+</Column>
+</Row>
+</Tab>
+
+<Tab label="Windows">
+<Row>
+<Column>
+
+```powershell
+Add-Content -Path C:\Windows\System32\drivers\etc\hosts -Value "$(minikube ip)`tminikube.local" -Force
+```
+
+</Column>
+</Row>
+</Tab>
+
+</Tabs>
+
+The local Docker client configuration must be also be updated with the corresponding IP address.
+
+* Update the `daemon.json` docker configuration file with the Minikube IP address. This file is usually located in:
+  * `~/.docker/daemon.json` on OSX
+  * `/etc/docker/daemon.json` on Linux
+  * `C:\ProgramData\Docker\config\daemon.json` on Windows
+* Restart the Docker daemon:
+  * On Linux - run: `sudo systemctl restart docker`
+  * On Mac and Windows - use the "Restart Docker" menu option in the Docker Desktop application.
+
+Example of `daemon.json`:
+
+```json
+{
+  "insecure-registries": [
+    "192.168.0.0/16"
+  ]
+}
+```
+
+<InlineNotification>
+
+**Note:** You can provide a specific IP address, or specify a subnet to future-proof the Docker client configuration.
+
+</InlineNotification>
+
+The Minikube IP address might change when you run `minikube delete`. If it changes, you must repeat these steps.
+
+Therefore, reconfirm the Minikube IP and its setting in the `hosts` file every time you start Minikube, or after you run `minikube delete`.
+
+## Minikube Ingress
+
+Ingress is a reverse proxy, which sits in front of the application that is deployed in Kubernetes. It facilitates use of a custom domain name to access a deployed application, instead of using service ports.
+To enable Ingress for Minikube, you must enable the `ingress` add-on.
+
+```shell
+minikube addons enable ingress
+```
+
+## Create a namespace
+
+Create a namespace for the SPM deployment, again use an environment variable for your convenience when following the guide.
+
+Create the environment variable, you can set to value to anything you like, but it should consist of lower case alphanumeric characters or `-`, and must start and end with an alphanumeric character (e.g. `my-name`,  or `123-abc`):
+
+```shell
+export PROJECT="dev"
+```
+
+Create the namespace:
+
+```shell
+kubectl create namespace $PROJECT
+```
+
+Switch to the new namespace:
+
+```shell
+kubectl config set-context --current --namespace $PROJECT
+```
+
+## Useful Minikube commands
+
+Some useful Minikube commands are as follows:
+
+```shell
+# Sample commands
+minikube status       # See if Minikube is running
+minikube start        # Create and start Minikube
+minikube dashboard    # Access the Kubernetes dashboard running within the Minikube cluster
+minikube ssh          # Login into the Minikube VM
+minikube addons list  # Show the status of the available add-ons
+minikube stop         # Stop Minikube
+minikube delete       # Delete the Minikube VM
+minikube ip           # Show the Minikube IP
+```
+
+For a full list of commands, see [Installing Kubernetes with Minikube](https://minikube.sigs.k8s.io/docs/start/).
