@@ -23,7 +23,7 @@ ARG BASE_REGISTRY
 FROM alpine AS ExtractAndMod
 ARG ANT_VERSION
 #COPY content/apache-ant-${ANT_VERSION}-bin.zip /tmp/apache-ant.zip
-COPY content/release-stage/CuramSDEJ/xmlserver /opt/ibm/Curam/xmlserver
+#COPY content/release-stage/CuramSDEJ/xmlserver /opt/ibm/Curam/xmlserver
 COPY content/start-xmlserver.sh /opt/ibm/Curam/xmlserver/start-xmlserver.sh
 COPY content/stop-xmlserver.sh /opt/ibm/Curam/xmlserver/stop-xmlserver.sh
 RUN unzip -qo /tmp/apache-ant.zip -d /opt/ \
